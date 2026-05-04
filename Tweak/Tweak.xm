@@ -15,14 +15,14 @@ static BOOL global = NO;
 
 static void loadPrefs(void) {
 
-    NSMutableDictionary *settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithUTF8String:jbroot("/var/mobile/Library/Preferences/de.finngaida.daynightswitch.plist")]];
+    NSMutableDictionary *settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithUTF8String:jbroot("/var/mobile/Library/Preferences/com.fusheng.daynightswitchfs.plist")]];
 
     enabled = [settings objectForKey:@"enabled"] ? [[settings objectForKey:@"enabled"] boolValue] : YES;
     global = [settings objectForKey:@"global"] ? [[settings objectForKey:@"global"] boolValue] : NO;
 }
 
 %ctor {
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)loadPrefs, CFSTR("de.finngaida.daynightswitch/settingschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)loadPrefs, CFSTR("com.fusheng.daynightswitchfs/settingschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     loadPrefs();
 }
 
