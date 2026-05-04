@@ -1,154 +1,118 @@
 #import "DayNightSwitch.h"
+#import <objc/runtime.h>
 
-#import <roothide.h>
+static const void *kFushengSwitchKey = &kFushengSwitchKey;
+static NSDictionary *gPrefs = nil;
 
-@interface PSSwitchTableCell : UITableViewCell
-- (SEL)cellAction;
-@end
+#pragma mark - 偏好读取
 
-@interface PSSpecifier : NSObject
-@end
-
-// MARK: Settings - 这些变量会被 DayNightSwitch.m 读取
-BOOL DNS_enabled = NO;
-BOOL DNS_global = NO;
-NSInteger DNS_animationSpeed = 1;   // 0=慢 1=正常 2=快 3=极速
-BOOL DNS_showClouds = YES;
-BOOL DNS_showStars = YES;
-BOOL DNS_showCraters = YES;
-
-static void loadPrefs(void) {
-
-    NSMutableDictionary *settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithUTF8String:jbroot("/var/mobile/Library/Preferences/com.fusheng.daynightswitchfs.plist")]];
-
-    DNS_enabled = [settings objectForKey:@"enabled"] ? [[settings objectForKey:@"enabled"] boolValue] : YES;
-    DNS_global = [settings objectForKey:@"global"] ? [[settings objectForKey:@"global"] boolValue] : NO;
-    DNS_animationSpeed = [settings objectForKey:@"animationSpeed"] ? [[settings objectForKey:@"animationSpeed"] integerValue] : 1;
-    DNS_showClouds = [settings objectForKey:@"showClouds"] ? [[settings objectForKey:@"showClouds"] boolValue] : YES;
-    DNS_showStars = [settings objectForKey:@"showStars"] ? [[settings objectForKey:@"showStars"] boolValue] : YES;
-    DNS_showCraters = [settings objectForKey:@"showCraters"] ? [[settings objectForKey:@"showCraters"] boolValue] : YES;
+static UIColor *ColorFromHex(NSString *hex, UIColor *fallback) {
+    if (!hex || hex.length == 0) return fallback;
+    NSString *s = [hex stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if ([s hasPrefix:@"#"]) s = [s substringFromIndex:1];
+    if (s.length != 6) return fallback;
+    
+    unsigned int rgb = 0;
+    NSScanner *scan = [NSScanner scannerWithString:s];
+    if (![scan scanHexInt:&rgb]) return fallback;
+    
+    return [UIColor colorWithRed:((rgb >> 16) & 0xFF) / 255.0
+                           green:((rgb >> 8) & 0xFF) / 255.0
+                            blue:(rgb & 0xFF) / 255.0
+                           alpha:1.0];
 }
 
-%ctor {
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)loadPrefs, CFSTR("com.fusheng.daynightswitchfs/settingschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    loadPrefs();
+static void LoadPrefs() {
+    NSString *path = @"/var/jb/var/mobile/Library/Preferences/com.fusheng.daynightswitchfs.plist";
+    gPrefs = [NSDictionary dictionaryWithContentsOfFile:path] ?: @{};
 }
 
-@interface UISwitch (DayNightSwitch)
-@property (nonatomic, strong) DayNightSwitch *dns_dayNightSwitch;
-@property (nonatomic, strong) NSNumber *dns_bypass;
-- (UIImpactFeedbackGenerator *)_impactFeedbackGenerator;
-- (void)dns_setup;
-- (void)dns_addSwitch;
-@end
+static BOOL IsEnabled() {
+    id v = gPrefs[@"enabled"];
+    return v ? [v boolValue] : YES;  // 默认开启
+}
+
+static void PrefsChanged(CFNotificationCenterRef center, void *observer, 
+                         CFStringRef name, const void *object, CFDictionaryRef userInfo) {
+    LoadPrefs();
+}
+
+#pragma mark - Hook UISwitch
 
 %hook UISwitch
 
-%property (nonatomic, strong) DayNightSwitch *dns_dayNightSwitch;
-%property (nonatomic, strong) NSNumber *dns_bypass;
-
-- (instancetype)initWithFrame:(CGRect)arg1 {
-    id object = %orig;
-    [self dns_setup];
-    return object;
-}
-
-- (instancetype)initWithCoder:(id)arg1 {
-    id object = %orig;
-    [self dns_setup];
-    return object;
-}
-
-%new
-- (void)dns_setup {
-    if (DNS_enabled && !self.dns_dayNightSwitch) {
-        NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
-        if (DNS_global) {
-            [self dns_addSwitch];
-        } else if ([bundleId isEqual: @"com.apple.Preferences"]) {
-            PSSwitchTableCell *cell = (PSSwitchTableCell *)self.superview;
-            if ([cell respondsToSelector:@selector(specifier)] && [cell respondsToSelector:@selector(control)]) {
-                id spec = [cell performSelector:@selector(specifier)];
-                if ([spec respondsToSelector:@selector(identifier)]) {
-                    NSString *identifier = [spec performSelector:@selector(identifier)];
-                    if ([identifier isEqual:@"DND_TOP_LEVEL"] && [cell performSelector:@selector(control)] == self) {
-                        [self dns_addSwitch];
-                    }
-                }
-            }
-        }
-    }
-}
-
-%new
-- (void)dns_addSwitch {
-    DayNightSwitch *sub = [[DayNightSwitch alloc] initWithFrame:CGRectMake(0, 0, 51, 31)];
-
-    self.dns_bypass = @YES;
-    sub.on = self.on;
-    self.dns_bypass = nil;
-
-    __weak __typeof(self) weakSelf = self;
-    sub.changeAction = ^(BOOL on, BOOL shouldNotifyChanged) {
-        __strong __typeof(weakSelf) strongSelf = weakSelf;
-
-        self.dns_bypass = @YES;
-        BOOL isOn = strongSelf.on;
-        strongSelf.on = on;
-        self.dns_bypass = nil;
-
-        if (isOn != on) {
-            [[strongSelf _impactFeedbackGenerator] impactOccurred];
-        }
-
-        if (shouldNotifyChanged) {
-            [strongSelf sendActionsForControlEvents:UIControlEventValueChanged];
-        }
-    };
-
-    self.dns_dayNightSwitch = sub;
-
-    [self addSubview:sub];
-}
-
-- (void)setOn:(BOOL)arg1 animated:(BOOL)arg2 notifyingVisualElement:(BOOL)arg3 {
+- (void)didMoveToWindow {
     %orig;
-    if ([self.dns_bypass boolValue]) {
-        return;
+    
+    if (!IsEnabled()) return;
+    if (self.window == nil) return;
+    
+    // 避免重复添加
+    FushengDayNightSwitch *existing = objc_getAssociatedObject(self, kFushengSwitchKey);
+    if (existing) return;
+    
+    // 隐藏原生 UISwitch
+    self.alpha = 0.011;
+    
+    // 创建自定义 switch
+    FushengDayNightSwitch *fs = [[FushengDayNightSwitch alloc] initWithFrame:self.bounds];
+    fs.on = self.isOn;
+    
+    // 应用用户颜色
+    NSString *dayHex = gPrefs[@"dayColor"];
+    NSString *nightHex = gPrefs[@"nightColor"];
+    if (dayHex) fs.dayBackgroundColor = ColorFromHex(dayHex, fs.dayBackgroundColor);
+    if (nightHex) fs.nightBackgroundColor = ColorFromHex(nightHex, fs.nightBackgroundColor);
+    
+    // 联动：用户点击我们的 switch → 同步原生 UISwitch
+    __weak UISwitch *weakOriginal = self;
+    [fs addTarget:self action:@selector(fs_onValueChanged:) forControlEvents:UIControlEventValueChanged];
+    objc_setAssociatedObject(fs, "weakOriginal", weakOriginal, OBJC_ASSOCIATION_ASSIGN);
+    
+    // 加到父视图（不加在 self 里，否则会被裁剪）
+    UIView *superview = self.superview;
+    if (superview) {
+        fs.center = self.center;
+        [superview addSubview:fs];
+    } else {
+        fs.frame = self.bounds;
+        [self addSubview:fs];
     }
+    
+    objc_setAssociatedObject(self, kFushengSwitchKey, fs, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
-    [self.dns_dayNightSwitch blockChangeActionAnimated:arg2];
-    [self.dns_dayNightSwitch setOn:arg1];
-    [self.dns_dayNightSwitch unblockChangeAction];
+%new
+- (void)fs_onValueChanged:(FushengDayNightSwitch *)sender {
+    // 同步状态到原生 UISwitch
+    [self setOn:sender.isOn animated:NO];
+    [self sendActionsForControlEvents:UIControlEventValueChanged];
+}
+
+- (void)setOn:(BOOL)on animated:(BOOL)animated {
+    %orig;
+    FushengDayNightSwitch *fs = objc_getAssociatedObject(self, kFushengSwitchKey);
+    if (fs && fs.isOn != on) {
+        [fs setOn:on animated:animated];
+    }
+}
+
+- (void)setOn:(BOOL)on {
+    %orig;
+    FushengDayNightSwitch *fs = objc_getAssociatedObject(self, kFushengSwitchKey);
+    if (fs && fs.isOn != on) {
+        [fs setOn:on animated:NO];
+    }
 }
 
 %end
 
-static UIView *FindViewOfClass(UIView *view, Class cls) {
-    if ([view isKindOfClass:cls]) {
-        return view;
-    }
-    for (UIView *subview in view.subviews) {
-        UIView *foundView = FindViewOfClass(subview, cls);
-        if (foundView) {
-            return foundView;
-        }
-    }
-    return nil;
+#pragma mark - 构造函数
+
+%ctor {
+    LoadPrefs();
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                    NULL, PrefsChanged,
+                                    CFSTR("com.fusheng.daynightswitchfs/reload"),
+                                    NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 }
-
-@interface MTAAlarmTableViewCell : UITableViewCell
-@end
-
-%hook MTAAlarmTableViewCell
-
-- (void)layoutSubviews {
-    %orig;
-
-    UIView *theView = FindViewOfClass(self.contentView, [DayNightSwitch class]);
-    if ([theView respondsToSelector:@selector(dns_disableAnimations)]) {
-        [(DayNightSwitch *)theView dns_disableAnimations];
-    }
-}
-
-%end

@@ -1,525 +1,195 @@
-//
-//  DayNightSwitch.m
-//  DayNightSwitch
-//
-//  Created by Finn Gaida on 03.09.16.
-//  Copyright © 2016 Finn Gaida. All rights reserved.
-//  Modified by 浮生 2025
-//
-
 #import "DayNightSwitch.h"
 
-#import <roothide.h>
-
-// 来自 Tweak.xm 的全局设置变量
-extern NSInteger DNS_animationSpeed;
-extern BOOL DNS_showClouds;
-extern BOOL DNS_showStars;
-extern BOOL DNS_showCraters;
-
-// 速度系数：0=慢(2.0倍时长) 1=正常(1.0) 2=快(0.5) 3=极速(0.25)
-static inline CGFloat DNS_speedFactor(void) {
-    switch (DNS_animationSpeed) {
-        case 0: return 2.0;
-        case 1: return 1.0;
-        case 2: return 0.5;
-        case 3: return 0.25;
-        default: return 1.0;
-    }
+@implementation FushengDayNightSwitch {
+    UIView *_backgroundView;        // 代码画的背景胶囊
+    UIImageView *_animView;         // 帧动画视图
+    NSArray<UIImage *> *_dayToNightFrames;  // 0~23：白→夜
+    NSArray<UIImage *> *_nightToDayFrames;  // 24~47：夜→白
+    BOOL _isAnimating;
 }
 
-/// some color constants
-#define onKnobColor [UIColor colorWithRed:0.882 green:0.765 blue:0.325 alpha:1];
-#define onSubviewColor [UIColor colorWithRed:0.992 green:0.875 blue:0.459 alpha:1];
-#define offKnobColor [UIColor colorWithRed:0.894 green:0.902 blue:0.788 alpha:1];
-#define offSubviewColor [UIColor colorWithRed:1 green:1 blue:1 alpha:1];
-#define offColor [UIColor colorWithRed:0.235 green:0.255 blue:0.271 alpha:1];
-#define offBorderColor [UIColor colorWithRed:0.11 green:0.11 blue:0.11 alpha:1];
-#define onColor [UIColor colorWithRed:0.627 green:0.894 blue:0.98 alpha:1];
-#define onBorderColor [UIColor colorWithRed:0.533 green:0.769 blue:0.843 alpha:1];
-
-@interface Knob : UIView
-
-@property(nonatomic, assign, getter=isOn) BOOL on;
-@property(nonatomic, assign, getter=isExpanded) BOOL expanded;
-@property(nonatomic, strong) UIView *subview;
-@property(nonatomic, strong) NSArray<UIView *> *craters;
-
-- (void)setAnimated:(BOOL)animated;
-
-@end
-
-@implementation Knob {
-    BOOL _shouldAnimate;
-}
-
-- (CGFloat)subviewMargin {
-    return self.frame.size.height / 12;
-}
-
-- (UIView *)setupSubview {
-
-    UIView *v = [[UIView alloc] initWithFrame:CGRectMake([self subviewMargin], [self subviewMargin],
-                                                         self.frame.size.width - [self subviewMargin] * 2,
-                                                         self.frame.size.height - [self subviewMargin] * 2)];
-    v.layer.masksToBounds = true;
-    v.layer.cornerRadius = v.frame.size.height / 2;
-    v.backgroundColor = offSubviewColor;
-
-    // 仅在启用陨石坑时添加
-    if (DNS_showCraters) {
-        for (UIView *c in [self setupCraters]) {
-            [v addSubview:c];
-        }
-    }
-
-    self.subview = v;
-    return v;
-}
-
-- (NSArray *)setupCraters {
-
-    CGFloat w = self.frame.size.width;
-    CGFloat h = self.frame.size.height;
-
-    UIView *topLeft = [[UIView alloc] initWithFrame:CGRectMake(0, h * 0.1, w * 0.2, w * 0.2)];
-    UIView *topRight = [[UIView alloc] initWithFrame:CGRectMake(w * 0.5, 0, w * 0.3, w * 0.3)];
-    UIView *bottom = [[UIView alloc] initWithFrame:CGRectMake(w * 0.4, h * 0.5, w * 0.25, w * 0.25)];
-
-    NSArray<UIView *> *all = @[ topLeft, topRight, bottom ];
-
-    for (UIView *v in all) {
-        v.backgroundColor = offSubviewColor;
-        v.layer.masksToBounds = YES;
-        v.layer.cornerRadius = v.frame.size.height / 2;
-
-        UIColor *offC = offKnobColor;
-        v.layer.borderColor = offC.CGColor;
-        v.layer.borderWidth = [self subviewMargin];
-    }
-
-    self.craters = all;
-    return all;
-}
+#pragma mark - 生命周期
 
 - (instancetype)initWithFrame:(CGRect)frame {
-    _on = NO;
-    _expanded = NO;
-
+    // 默认尺寸：和 UISwitch 一致
+    if (CGRectIsEmpty(frame)) {
+        frame = CGRectMake(0, 0, 51, 31);
+    }
     self = [super initWithFrame:frame];
-
-    self.layer.masksToBounds = YES;
-    self.layer.cornerRadius = self.frame.size.height / 2;
-    self.backgroundColor = offKnobColor;
-
-    [self addSubview:[self setupSubview]];
-
-    [self _setOn:NO];
-    [self _setExpanded:NO];
-
+    if (self) {
+        [self _setupDefaults];
+        [self _setupViews];
+        [self _loadFrames];
+        [self _refreshDisplay];
+    }
     return self;
+}
+
+- (void)_setupDefaults {
+    _isOn = NO;
+    _isAnimating = NO;
+    // 默认颜色：磨砂玻璃风格的淡蓝色
+    _dayBackgroundColor   = [UIColor colorWithRed:0.78 green:0.87 blue:0.95 alpha:1.0];  // 浅蓝
+    _nightBackgroundColor = [UIColor colorWithRed:0.20 green:0.25 blue:0.35 alpha:1.0];  // 深蓝灰
+}
+
+- (void)_setupViews {
+    self.backgroundColor = [UIColor clearColor];
+    self.clipsToBounds = NO;
+    
+    // 1. 代码画的背景胶囊（颜色可定制）
+    _backgroundView = [[UIView alloc] initWithFrame:self.bounds];
+    _backgroundView.backgroundColor = _dayBackgroundColor;
+    _backgroundView.layer.cornerRadius = self.bounds.size.height / 2.0;
+    _backgroundView.clipsToBounds = YES;
+    _backgroundView.userInteractionEnabled = NO;
+    [self addSubview:_backgroundView];
+    
+    // 2. PNG 帧动画视图（铺满整个 switch）
+    _animView = [[UIImageView alloc] initWithFrame:self.bounds];
+    _animView.contentMode = UIViewContentModeScaleAspectFill;
+    _animView.clipsToBounds = YES;
+    _animView.userInteractionEnabled = NO;
+    _animView.layer.cornerRadius = self.bounds.size.height / 2.0;
+    [self addSubview:_animView];
+    
+    // 3. 点击手势
+    [self addTarget:self action:@selector(_onTap) forControlEvents:UIControlEventTouchUpInside];
+}
+
+#pragma mark - 加载 PNG 序列
+
+- (void)_loadFrames {
+    NSBundle *bundle = [NSBundle bundleForClass:[self class]];
+    NSMutableArray *d2n = [NSMutableArray arrayWithCapacity:24];
+    NSMutableArray *n2d = [NSMutableArray arrayWithCapacity:24];
+    
+    // 前 24 帧：白天 → 夜晚
+    for (int i = 0; i < 24; i++) {
+        NSString *name = [NSString stringWithFormat:@"replay%d", i];
+        UIImage *img = [UIImage imageNamed:name 
+                                   inBundle:bundle 
+              compatibleWithTraitCollection:nil];
+        if (img) [d2n addObject:img];
+    }
+    
+    // 后 24 帧：夜晚 → 白天
+    for (int i = 24; i < 48; i++) {
+        NSString *name = [NSString stringWithFormat:@"replay%d", i];
+        UIImage *img = [UIImage imageNamed:name 
+                                   inBundle:bundle 
+              compatibleWithTraitCollection:nil];
+        if (img) [n2d addObject:img];
+    }
+    
+    _dayToNightFrames = [d2n copy];
+    _nightToDayFrames = [n2d copy];
+    
+    NSLog(@"[FushengDayNightSwitch] 加载了 %lu + %lu 帧", 
+          (unsigned long)_dayToNightFrames.count, 
+          (unsigned long)_nightToDayFrames.count);
+}
+
+#pragma mark - 状态切换
+
+- (void)_onTap {
+    if (_isAnimating) return;
+    [self setOn:!_isOn animated:YES];
+    [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
 - (void)setOn:(BOOL)on {
-    if (_on == on) {
+    [self setOn:on animated:NO];
+}
+
+- (void)setOn:(BOOL)on animated:(BOOL)animated {
+    if (_isOn == on && !animated) {
+        _isOn = on;
+        [self _refreshDisplay];
         return;
     }
-
-    _on = on;
-
-    [self _setOn:on];
-}
-
-- (void)_setOn:(BOOL)on {
-    CGFloat speed = DNS_speedFactor();
-
-    [UIView animateWithDuration:(_shouldAnimate ? 0.8 * speed : 0)
-                          delay:0
-         usingSpringWithDamping:1
-          initialSpringVelocity:0
-                        options:UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
-                         if (on) {
-                             self.backgroundColor = onKnobColor;
-                             self.subview.backgroundColor = onSubviewColor;
-                         } else {
-                             self.backgroundColor = offKnobColor;
-                             self.subview.backgroundColor = offSubviewColor;
-                         }
-
-                         BOOL cache = self.isExpanded;
-                         [self _setExpanded:cache];
-                     }
-                     completion:nil];
-
-    [UIView animateWithDuration:(_shouldAnimate ? 0.4 * speed : 0)
-                          delay:0
-         usingSpringWithDamping:1
-          initialSpringVelocity:0
-                        options:UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
-                         self.subview.transform = CGAffineTransformMakeRotation(M_PI * ((self.isOn) ? 0.2 : -0.2));
-                     }
-                     completion:nil];
-}
-
-- (void)setExpanded:(BOOL)expanded {
-    if (_expanded == expanded) {
+    
+    BOOL wasOn = _isOn;
+    _isOn = on;
+    
+    if (!animated || wasOn == on) {
+        [self _refreshDisplay];
         return;
     }
-
-    _expanded = expanded;
-
-    [self _setExpanded:expanded];
+    
+    [self _playTransition:on];
 }
 
-- (void)_setExpanded:(BOOL)expanded {
-    CGFloat newWidth = self.frame.size.height * (expanded ? 1.25 : 1);
-    CGFloat x = (self.isOn) ? self.superview.frame.size.width - newWidth - [(DayNightSwitch *)self.superview knobMargin]
-                          : self.frame.origin.x;
-    CGFloat speed = DNS_speedFactor();
-
-    [UIView animateWithDuration:(_shouldAnimate ? 0.8 * speed : 0)
-                          delay:0
-         usingSpringWithDamping:1
-          initialSpringVelocity:0
-                        options:UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
-                         self.frame = CGRectMake(x, self.frame.origin.y, newWidth, self.frame.size.height);
-                         self.subview.center =
-                             CGPointMake((self.isOn) ? self.frame.size.width - self.frame.size.height / 2
-                                                   : self.frame.size.height / 2,
-                                         self.subview.center.y);
-
-                         for (UIView *v in self.craters) {
-                             v.alpha = (self.isOn) ? 0 : 1;
-                         }
-                     }
-                     completion:nil];
-}
-
-- (void)setAnimated:(BOOL)animated {
-    _shouldAnimate = animated;
-}
-
-@end
-
-@interface DayNightLayerDelegate : NSObject <CALayerDelegate>
-@property(nonatomic, assign, getter=isAnimated) BOOL animated;
-@end
-
-@implementation DayNightLayerDelegate
-
-- (id<CAAction>)actionForLayer:(CALayer *)layer forKey:(NSString *)key {
-    return _animated ? nil : [NSNull null];
-}
-
-@end
-
-@interface DayNightSwitch ()
-
-@property(nonatomic, strong) Knob *knob;
-@property(nonatomic, assign, getter=isMoved) BOOL moved;
-@property(nonatomic, assign, getter=isDragging) BOOL dragging;
-@property(nonatomic, assign, getter=isOnBeforeDrag) BOOL onBeforeDrag;
-@property(nonatomic, strong) DayNightLayerDelegate *layerDelegate;
-
-@end
-
-@implementation DayNightSwitch {
-    BOOL _shouldSkipChangeAction;
-    BOOL _shouldAnimate;
-    BOOL _shouldAnimateImportant;
-}
-
-- (CGFloat)borderWidth {
-    return self.frame.size.height / 7;
-}
-
-- (CGFloat)knobMargin {
-    return self.frame.size.height / 10;
-}
-
-- (Knob *)setupKnob {
-
-    CGFloat w = self.frame.size.height - [self knobMargin] * 2;
-    Knob *v = [[Knob alloc] initWithFrame:CGRectMake([self knobMargin], [self knobMargin], w, w)];
-
-    self.knob = v;
-    return v;
-}
-
-- (NSArray *)setupBorders {
-
-    CAShapeLayer *b1 = [CAShapeLayer layer];
-    CAShapeLayer *b2 = [CAShapeLayer layer];
-    UIBezierPath *path =
-        [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, self.frame.size.width, self.frame.size.height)
-                                   cornerRadius:self.frame.size.height / 2];
-
-    b1.path = path.CGPath;
-    b1.fillColor = [UIColor clearColor].CGColor;
-
-    UIColor *onC = onBorderColor;
-    b1.strokeColor = onC.CGColor;
-    b1.lineWidth = [self borderWidth];
-    b1.delegate = self.layerDelegate;
-    self.onBorder = b1;
-
-    b2.path = path.CGPath;
-    b2.fillColor = [UIColor clearColor].CGColor;
-
-    UIColor *offC = offBorderColor;
-    b2.strokeColor = offC.CGColor;
-    b2.lineWidth = [self borderWidth];
-    b2.delegate = self.layerDelegate;
-    self.offBorder = b2;
-
-    return @[ b1, b2 ];
-}
-
-- (NSArray *)setupStars {
-
-    CGFloat w = self.frame.size.width;
-    CGFloat h = self.frame.size.height;
-
-    CGFloat x = h * 0.05;
-    UIView *s1 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.5, h * 0.16, x, x)];
-    UIView *s2 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.62, h * 0.33, x * 0.6, x * 0.6)];
-    UIView *s3 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.7, h * 0.15, x, x)];
-    UIView *s4 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.83, h * 0.39, x * 1.4, x * 1.4)];
-    UIView *s5 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.7, h * 0.54, x * 0.8, x * 0.8)];
-    UIView *s6 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.52, h * 0.73, x * 1.3, x * 1.3)];
-    UIView *s7 = [[UIView alloc] initWithFrame:CGRectMake(w * 0.82, h * 0.66, x * 1.1, x * 1.1)];
-
-    NSArray *all = @[ s1, s2, s3, s4, s5, s6, s7 ];
-
-    for (UIView *s in all) {
-        s.layer.masksToBounds = YES;
-        s.layer.cornerRadius = s.frame.size.height / 2;
-        s.backgroundColor = [UIColor whiteColor];
-    }
-
-    self.stars = all;
-    return all;
-}
-
-- (UIImageView *)setupCloud {
-
-    UIImageView *v =
-        [[UIImageView alloc] initWithFrame:CGRectMake(self.frame.size.width / 3, self.frame.size.height * 0.4,
-                                                      self.frame.size.width / 3, self.frame.size.width * 0.23)];
-    v.image = [UIImage
-        imageWithContentsOfFile:
-            [NSString
-                stringWithUTF8String:jbroot("/var/mobile/Library/Application Support/DayNightSwitch/cloud@2x.png")]];
-    v.transform = CGAffineTransformMakeScale(0, 0);
-
-    self.cloud = v;
-    return v;
-}
-
-- (instancetype)initWithCenter:(CGPoint)center {
-    CGFloat height = 30;
-    CGFloat width = height * 1.75;
-
-    self = [super initWithFrame:CGRectMake(center.x - width / 2, center.y - height / 2, width, height)];
-    [self commonInit];
-
-    return self;
-}
-
-- (void)commonInit {
-    _shouldAnimateImportant = YES;
-
-    self.moved = NO;
-    self.dragging = NO;
-    self.layer.masksToBounds = YES;
-    self.layer.cornerRadius = self.frame.size.height / 2;
-    self.backgroundColor = [UIColor colorWithRed:0.235 green:0.255 blue:0.271 alpha:1];
-    self.layerDelegate = [[DayNightLayerDelegate alloc] init];
-
-    NSArray *borders = [self setupBorders];
-    [self.layer addSublayer:borders[0]];
-    [self.layer addSublayer:borders[1]];
-
-    // 仅在启用星星时添加
-    if (DNS_showStars) {
-        for (UIView *v in [self setupStars]) {
-            [self addSubview:v];
-        }
+- (void)_refreshDisplay {
+    // 静止状态：显示对应方向的最后一帧
+    if (_isOn) {
+        // ON = 夜晚状态，显示 d2n 最后一帧
+        _animView.image = [_dayToNightFrames lastObject];
+        _backgroundView.backgroundColor = _nightBackgroundColor;
     } else {
-        self.stars = @[];
-    }
-
-    [self addSubview:[self setupKnob]];
-
-    // 仅在启用云朵时添加
-    if (DNS_showClouds) {
-        [self addSubview:[self setupCloud]];
-    }
-
-    UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self
-                                                                                 action:@selector(tapGestureOccurred:)];
-    [self addGestureRecognizer:tapGesture];
-
-    UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self
-                                                                                 action:@selector(panGestureOccurred:)];
-    [self addGestureRecognizer:panGesture];
-}
-
-- (void)panGestureOccurred:(UIPanGestureRecognizer *)sender {
-    CGPoint touchLocation = [sender locationInView:self];
-
-    if (sender.state == UIGestureRecognizerStateBegan) {
-        self.onBeforeDrag = self.isOn;
-        self.dragging = YES;
-        self.knob.expanded = YES;
-    } else if (sender.state == UIGestureRecognizerStateChanged) {
-        self.moved = YES;
-
-        if (touchLocation.x > self.frame.size.width / 2 && !self.isOn) {
-            self.on = YES;
-        } else if (touchLocation.x < self.frame.size.width / 2 && self.isOn) {
-            self.on = NO;
-        }
-    } else if (sender.state == UIGestureRecognizerStateEnded || sender.state == UIGestureRecognizerStateCancelled ||
-               sender.state == UIGestureRecognizerStateFailed) {
-
-        self.knob.expanded = NO;
-        self.dragging = NO;
-        self.moved = NO;
-
-        if (self.isOn != self.isOnBeforeDrag && self.changeAction) {
-            self.changeAction(self.isOn, YES);
-        }
+        // OFF = 白天状态，显示 n2d 最后一帧（也就是回到白天）
+        _animView.image = [_nightToDayFrames lastObject];
+        _backgroundView.backgroundColor = _dayBackgroundColor;
     }
 }
 
-- (instancetype)initWithCoder:(NSCoder *)aDecoder {
-    self = [super initWithCoder:aDecoder];
-    [self commonInit];
-    return self;
-}
-
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    [self commonInit];
-    return self;
-}
-
-- (void)tapGestureOccurred:(UITapGestureRecognizer *)sender {
-    if (self.isDragging) {
+- (void)_playTransition:(BOOL)toOn {
+    _isAnimating = YES;
+    
+    NSArray<UIImage *> *frames = toOn ? _dayToNightFrames : _nightToDayFrames;
+    if (frames.count == 0) {
+        _isAnimating = NO;
+        [self _refreshDisplay];
         return;
     }
-
-    self.dragging = YES;
-    self.on = !self.isOn;
-    self.dragging = NO;
+    
+    NSTimeInterval duration = 0.6;  // 总时长 0.6 秒
+    
+    // 1. 帧动画
+    _animView.animationImages = frames;
+    _animView.animationDuration = duration;
+    _animView.animationRepeatCount = 1;
+    [_animView startAnimating];
+    
+    // 2. 同步背景颜色渐变
+    UIColor *targetColor = toOn ? _nightBackgroundColor : _dayBackgroundColor;
+    [UIView animateWithDuration:duration animations:^{
+        self->_backgroundView.backgroundColor = targetColor;
+    }];
+    
+    // 3. 动画结束后停在最后一帧
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf->_animView stopAnimating];
+        strongSelf->_animView.animationImages = nil;
+        strongSelf->_animView.image = [frames lastObject];
+        strongSelf->_isAnimating = NO;
+    });
 }
 
-- (void)setOn:(BOOL)on {
-    if (_on == on) {
-        return;
-    }
+#pragma mark - 颜色 setter
 
-    _on = on;
-
-    [self _setOn:on];
+- (void)setDayBackgroundColor:(UIColor *)color {
+    _dayBackgroundColor = color ?: [UIColor colorWithRed:0.78 green:0.87 blue:0.95 alpha:1.0];
+    if (!_isOn) _backgroundView.backgroundColor = _dayBackgroundColor;
 }
 
-- (void)_setOn:(BOOL)on {
-    if (self.changeAction && !_shouldSkipChangeAction) {
-        self.changeAction(on, !self.isMoved);
-    }
-
-    BOOL shouldAnimate = (_shouldAnimate || self.isDragging) && _shouldAnimateImportant;
-    CGFloat speed = DNS_speedFactor();
-
-    [self.layerDelegate setAnimated:shouldAnimate];
-    [self.knob setAnimated:shouldAnimate];
-
-    self.knob.on = on;
-
-    [UIView animateWithDuration:(shouldAnimate ? 0.4 * speed : 0)
-        delay:0
-        usingSpringWithDamping:1
-        initialSpringVelocity:0
-        options:UIViewAnimationOptionAllowUserInteraction
-        animations:^{
-            CGFloat knobRadius = self.knob.frame.size.width / 2;
-
-            if (on) {
-                self.knob.center =
-                    CGPointMake(self.frame.size.width - knobRadius - [self knobMargin], self.knob.center.y);
-
-                self.backgroundColor = onColor;
-                self.offBorder.strokeStart = 1.0;
-                if (self.cloud) {
-                    self.cloud.transform = CGAffineTransformIdentity;
-                }
-            } else {
-                self.knob.center = CGPointMake(knobRadius + [self knobMargin], self.knob.center.y);
-
-                self.backgroundColor = offColor;
-                self.offBorder.strokeEnd = 1.0;
-                if (self.cloud) {
-                    self.cloud.transform = CGAffineTransformMakeScale(0, 0);
-                }
-            }
-
-            for (int i = 0; i < self.stars.count; i++) {
-                UIView *star = self.stars[i];
-                star.alpha = (on) ? 0 : 1;
-
-                if (shouldAnimate) {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * i * speed * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                        star.transform = CGAffineTransformMakeScale(1.5, 1.5);
-
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.05 * speed * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                            star.transform = CGAffineTransformIdentity;
-                        });
-                    });
-                } else {
-                    star.transform = CGAffineTransformIdentity;
-                }
-            }
-
-            if (!shouldAnimate) {
-                if (on) {
-                    self.offBorder.strokeStart = 0.0;
-                    self.offBorder.strokeEnd = 0.0;
-                } else {
-                    self.offBorder.strokeStart = 0.0;
-                    self.offBorder.strokeEnd = 1.0;
-                }
-            }
-        }
-        completion:^(BOOL finished) {
-            if (shouldAnimate) {
-                if (on) {
-                    self.offBorder.strokeStart = 0.0;
-                    self.offBorder.strokeEnd = 0.0;
-                } else {
-                    self.offBorder.strokeStart = 0.0;
-                    self.offBorder.strokeEnd = 1.0;
-                }
-            }
-        }];
+- (void)setNightBackgroundColor:(UIColor *)color {
+    _nightBackgroundColor = color ?: [UIColor colorWithRed:0.20 green:0.25 blue:0.35 alpha:1.0];
+    if (_isOn) _backgroundView.backgroundColor = _nightBackgroundColor;
 }
 
-- (void)blockChangeActionAnimated:(BOOL)animated {
-    _shouldSkipChangeAction = YES;
-    _shouldAnimate = animated && _shouldAnimateImportant;
-    [self.knob setAnimated:animated];
-}
+#pragma mark - 布局
 
-- (void)unblockChangeAction {
-    _shouldSkipChangeAction = NO;
-}
-
-- (void)dns_disableAnimations {
-    _shouldAnimateImportant = NO;
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    _backgroundView.frame = self.bounds;
+    _backgroundView.layer.cornerRadius = self.bounds.size.height / 2.0;
+    _animView.frame = self.bounds;
+    _animView.layer.cornerRadius = self.bounds.size.height / 2.0;
 }
 
 @end
