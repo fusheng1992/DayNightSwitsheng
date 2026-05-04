@@ -4,11 +4,29 @@
 //
 //  Created by Finn Gaida on 03.09.16.
 //  Copyright © 2016 Finn Gaida. All rights reserved.
+//  Modified by 浮生 2025
 //
 
 #import "DayNightSwitch.h"
 
 #import <roothide.h>
+
+// 来自 Tweak.xm 的全局设置变量
+extern NSInteger DNS_animationSpeed;
+extern BOOL DNS_showClouds;
+extern BOOL DNS_showStars;
+extern BOOL DNS_showCraters;
+
+// 速度系数：0=慢(2.0倍时长) 1=正常(1.0) 2=快(0.5) 3=极速(0.25)
+static inline CGFloat DNS_speedFactor(void) {
+    switch (DNS_animationSpeed) {
+        case 0: return 2.0;
+        case 1: return 1.0;
+        case 2: return 0.5;
+        case 3: return 0.25;
+        default: return 1.0;
+    }
+}
 
 /// some color constants
 #define onKnobColor [UIColor colorWithRed:0.882 green:0.765 blue:0.325 alpha:1];
@@ -22,16 +40,9 @@
 
 @interface Knob : UIView
 
-/// Visual state of the knob, animates changes
 @property(nonatomic, assign, getter=isOn) BOOL on;
-
-/// Horizontally expanded state of the knob, animates changes
 @property(nonatomic, assign, getter=isExpanded) BOOL expanded;
-
-/// Round subview of the knob
 @property(nonatomic, strong) UIView *subview;
-
-/// Circular subviews on the off state `subview`
 @property(nonatomic, strong) NSArray<UIView *> *craters;
 
 - (void)setAnimated:(BOOL)animated;
@@ -42,16 +53,10 @@
     BOOL _shouldAnimate;
 }
 
-/// Distance from knob to subview circle
 - (CGFloat)subviewMargin {
     return self.frame.size.height / 12;
 }
 
-/**
- Sets up the `subview` with the craters as well
-
- - returns: the view
- */
 - (UIView *)setupSubview {
 
     UIView *v = [[UIView alloc] initWithFrame:CGRectMake([self subviewMargin], [self subviewMargin],
@@ -61,22 +66,19 @@
     v.layer.cornerRadius = v.frame.size.height / 2;
     v.backgroundColor = offSubviewColor;
 
-    for (UIView *c in [self setupCraters]) {
-        [v addSubview:c];
+    // 仅在启用陨石坑时添加
+    if (DNS_showCraters) {
+        for (UIView *c in [self setupCraters]) {
+            [v addSubview:c];
+        }
     }
 
     self.subview = v;
     return v;
 }
 
-/**
- Sets up three craters
-
- - returns: array of set up views
- */
 - (NSArray *)setupCraters {
 
-    // shortcuts
     CGFloat w = self.frame.size.width;
     CGFloat h = self.frame.size.height;
 
@@ -129,7 +131,9 @@
 }
 
 - (void)_setOn:(BOOL)on {
-    [UIView animateWithDuration:(_shouldAnimate ? 0.8 : 0)
+    CGFloat speed = DNS_speedFactor();
+
+    [UIView animateWithDuration:(_shouldAnimate ? 0.8 * speed : 0)
                           delay:0
          usingSpringWithDamping:1
           initialSpringVelocity:0
@@ -148,7 +152,7 @@
                      }
                      completion:nil];
 
-    [UIView animateWithDuration:(_shouldAnimate ? 0.4 : 0)
+    [UIView animateWithDuration:(_shouldAnimate ? 0.4 * speed : 0)
                           delay:0
          usingSpringWithDamping:1
           initialSpringVelocity:0
@@ -173,8 +177,9 @@
     CGFloat newWidth = self.frame.size.height * (expanded ? 1.25 : 1);
     CGFloat x = (self.isOn) ? self.superview.frame.size.width - newWidth - [(DayNightSwitch *)self.superview knobMargin]
                           : self.frame.origin.x;
+    CGFloat speed = DNS_speedFactor();
 
-    [UIView animateWithDuration:(_shouldAnimate ? 0.8 : 0)
+    [UIView animateWithDuration:(_shouldAnimate ? 0.8 * speed : 0)
                           delay:0
          usingSpringWithDamping:1
           initialSpringVelocity:0
@@ -213,42 +218,28 @@
 
 @interface DayNightSwitch ()
 
-/// Round white knob
 @property(nonatomic, strong) Knob *knob;
-
 @property(nonatomic, assign, getter=isMoved) BOOL moved;
-
-/// This prevents the tap gesture recognizer from interfering the drag movement
 @property(nonatomic, assign, getter=isDragging) BOOL dragging;
-
 @property(nonatomic, assign, getter=isOnBeforeDrag) BOOL onBeforeDrag;
-
 @property(nonatomic, strong) DayNightLayerDelegate *layerDelegate;
 
 @end
 
-/// A switch inspired by [Dribbble](https://dribbble.com/shots/1909289-Day-Night-Toggle-Button-GIF)
 @implementation DayNightSwitch {
     BOOL _shouldSkipChangeAction;
     BOOL _shouldAnimate;
     BOOL _shouldAnimateImportant;
 }
 
-/// Width of the darker border of the background
 - (CGFloat)borderWidth {
     return self.frame.size.height / 7;
 }
 
-/// Distance between border and knob
 - (CGFloat)knobMargin {
     return self.frame.size.height / 10;
 }
 
-/**
- Sets up the `knob`
-
- - returns: the knob view
- */
 - (Knob *)setupKnob {
 
     CGFloat w = self.frame.size.height - [self knobMargin] * 2;
@@ -258,11 +249,6 @@
     return v;
 }
 
-/**
- Sets up the border layers
-
- - returns: array containing both layers
- */
 - (NSArray *)setupBorders {
 
     CAShapeLayer *b1 = [CAShapeLayer layer];
@@ -292,14 +278,8 @@
     return @[ b1, b2 ];
 }
 
-/**
- Creates 7 stars with different location and size
-
- - returns: an array of set up views
- */
 - (NSArray *)setupStars {
 
-    // shortcuts
     CGFloat w = self.frame.size.width;
     CGFloat h = self.frame.size.height;
 
@@ -324,11 +304,6 @@
     return all;
 }
 
-/**
- Sets up the `cloud`
-
- - returns: the image view
- */
 - (UIImageView *)setupCloud {
 
     UIImageView *v =
@@ -340,13 +315,10 @@
                 stringWithUTF8String:jbroot("/var/mobile/Library/Application Support/DayNightSwitch/cloud@2x.png")]];
     v.transform = CGAffineTransformMakeScale(0, 0);
 
-    // this should be done with UIBezierPaths...
-
     self.cloud = v;
     return v;
 }
 
-// MARK: Initializers
 - (instancetype)initWithCenter:(CGPoint)center {
     CGFloat height = 30;
     CGFloat width = height * 1.75;
@@ -357,9 +329,6 @@
     return self;
 }
 
-/**
- Init method called by all initializers. The switch is initialized off by default
- */
 - (void)commonInit {
     _shouldAnimateImportant = YES;
 
@@ -374,12 +343,21 @@
     [self.layer addSublayer:borders[0]];
     [self.layer addSublayer:borders[1]];
 
-    for (UIView *v in [self setupStars]) {
-        [self addSubview:v];
+    // 仅在启用星星时添加
+    if (DNS_showStars) {
+        for (UIView *v in [self setupStars]) {
+            [self addSubview:v];
+        }
+    } else {
+        self.stars = @[];
     }
 
     [self addSubview:[self setupKnob]];
-    [self addSubview:[self setupCloud]];
+
+    // 仅在启用云朵时添加
+    if (DNS_showClouds) {
+        [self addSubview:[self setupCloud]];
+    }
 
     UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self
                                                                                  action:@selector(tapGestureOccurred:)];
@@ -434,7 +412,7 @@
     if (self.isDragging) {
         return;
     }
-    
+
     self.dragging = YES;
     self.on = !self.isOn;
     self.dragging = NO;
@@ -451,19 +429,19 @@
 }
 
 - (void)_setOn:(BOOL)on {
-    // call the action closure
     if (self.changeAction && !_shouldSkipChangeAction) {
         self.changeAction(on, !self.isMoved);
     }
 
     BOOL shouldAnimate = (_shouldAnimate || self.isDragging) && _shouldAnimateImportant;
+    CGFloat speed = DNS_speedFactor();
 
     [self.layerDelegate setAnimated:shouldAnimate];
     [self.knob setAnimated:shouldAnimate];
 
     self.knob.on = on;
 
-    [UIView animateWithDuration:(shouldAnimate ? 0.4 : 0)
+    [UIView animateWithDuration:(shouldAnimate ? 0.4 * speed : 0)
         delay:0
         usingSpringWithDamping:1
         initialSpringVelocity:0
@@ -477,13 +455,17 @@
 
                 self.backgroundColor = onColor;
                 self.offBorder.strokeStart = 1.0;
-                self.cloud.transform = CGAffineTransformIdentity;
+                if (self.cloud) {
+                    self.cloud.transform = CGAffineTransformIdentity;
+                }
             } else {
                 self.knob.center = CGPointMake(knobRadius + [self knobMargin], self.knob.center.y);
 
                 self.backgroundColor = offColor;
                 self.offBorder.strokeEnd = 1.0;
-                self.cloud.transform = CGAffineTransformMakeScale(0, 0);
+                if (self.cloud) {
+                    self.cloud.transform = CGAffineTransformMakeScale(0, 0);
+                }
             }
 
             for (int i = 0; i < self.stars.count; i++) {
@@ -491,10 +473,10 @@
                 star.alpha = (on) ? 0 : 1;
 
                 if (shouldAnimate) {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * i * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * i * speed * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                         star.transform = CGAffineTransformMakeScale(1.5, 1.5);
 
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.05 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.05 * speed * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                             star.transform = CGAffineTransformIdentity;
                         });
                     });
@@ -514,7 +496,6 @@
             }
         }
         completion:^(BOOL finished) {
-            // reset the values
             if (shouldAnimate) {
                 if (on) {
                     self.offBorder.strokeStart = 0.0;

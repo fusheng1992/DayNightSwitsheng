@@ -9,16 +9,24 @@
 @interface PSSpecifier : NSObject
 @end
 
-// MARK: Settings
-static BOOL enabled = NO;
-static BOOL global = NO;
+// MARK: Settings - 这些变量会被 DayNightSwitch.m 读取
+BOOL DNS_enabled = NO;
+BOOL DNS_global = NO;
+NSInteger DNS_animationSpeed = 1;   // 0=慢 1=正常 2=快 3=极速
+BOOL DNS_showClouds = YES;
+BOOL DNS_showStars = YES;
+BOOL DNS_showCraters = YES;
 
 static void loadPrefs(void) {
 
     NSMutableDictionary *settings = [[NSMutableDictionary alloc] initWithContentsOfFile:[NSString stringWithUTF8String:jbroot("/var/mobile/Library/Preferences/com.fusheng.daynightswitchfs.plist")]];
 
-    enabled = [settings objectForKey:@"enabled"] ? [[settings objectForKey:@"enabled"] boolValue] : YES;
-    global = [settings objectForKey:@"global"] ? [[settings objectForKey:@"global"] boolValue] : NO;
+    DNS_enabled = [settings objectForKey:@"enabled"] ? [[settings objectForKey:@"enabled"] boolValue] : YES;
+    DNS_global = [settings objectForKey:@"global"] ? [[settings objectForKey:@"global"] boolValue] : NO;
+    DNS_animationSpeed = [settings objectForKey:@"animationSpeed"] ? [[settings objectForKey:@"animationSpeed"] integerValue] : 1;
+    DNS_showClouds = [settings objectForKey:@"showClouds"] ? [[settings objectForKey:@"showClouds"] boolValue] : YES;
+    DNS_showStars = [settings objectForKey:@"showStars"] ? [[settings objectForKey:@"showStars"] boolValue] : YES;
+    DNS_showCraters = [settings objectForKey:@"showCraters"] ? [[settings objectForKey:@"showCraters"] boolValue] : YES;
 }
 
 %ctor {
@@ -53,9 +61,9 @@ static void loadPrefs(void) {
 
 %new
 - (void)dns_setup {
-    if (enabled && !self.dns_dayNightSwitch) {
+    if (DNS_enabled && !self.dns_dayNightSwitch) {
         NSString *bundleId = [[NSBundle mainBundle] bundleIdentifier];
-        if (global) {
+        if (DNS_global) {
             [self dns_addSwitch];
         } else if ([bundleId isEqual: @"com.apple.Preferences"]) {
             PSSwitchTableCell *cell = (PSSwitchTableCell *)self.superview;
