@@ -16,11 +16,11 @@
 			<key>default</key>
 			<false/>
 			<key>defaults</key>
-			<string>de.finngaida.daynightswitch</string>
+			<string>com.fusheng.daynightswitchfs</string>
 			<key>key</key>
 			<string>global</string>
 			<key>label</key>
-			<string>Enabled</string>
+			<string>启用</string>
 		</dict>
 		<dict>
 			<key>action</key>
@@ -28,79 +28,36 @@
 			<key>cell</key>
 			<string>PSButtonCell</string>
 			<key>label</key>
-			<string>Respring to Apply Changes</string>
+			<string>注销以应用更改</string>
 			<key>isDestructive</key>
 			<true/>
 		</dict>
-
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string></string>
 			<key>footerText</key>
-			<string>Please support our paid works, thank you!</string>
+			<string>受 Dribbble 设计灵感启发的日夜动画开关</string>
 		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>label</key>
-			<string>Fixed with ♥ by OwnGoal Studio</string>
-			<key>action</key>
-			<string>support</string>
-		</dict>
-
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>About</string>
+			<string>关于</string>
 			<key>footerText</key>
-			<string>Copyright ⓒ 2016 Finn Gaida
-Copyright ⓒ 2025 OwnGoal Studio</string>
+			<string>Copyright © 2016 Finn Gaida
+Fixed by © 2025 OwnGoal Studio
+Modified by 浮生 2026</string>
 		</dict>
 		<dict>
-			<key>action</key>
-			<string>twitter</string>
 			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>icon</key>
-			<string>twitter.png</string>
+			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>Follow me on Twitter (@fga)</string>
-		</dict>
-		<dict>
-			<key>action</key>
-			<string>github</string>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>icon</key>
-			<string>github.png</string>
-			<key>label</key>
-			<string>Follow me on GitHub</string>
-		</dict>
-		<dict>
-			<key>action</key>
-			<string>mail</string>
-			<key>icon</key>
-			<string>mail.png</string>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>label</key>
-			<string>Send a feature request</string>
-		</dict>
-		<dict>
-			<key>action</key>
-			<string>paypal</string>
-			<key>icon</key>
-			<string>paypal.png</string>
-			<key>cell</key>
-			<string>PSButtonCell</string>
-			<key>label</key>
-			<string>Send a donation</string>
+			<string></string>
 		</dict>
 	</array>
 	<key>title</key>
-	<string>DayNightSwitch</string>
+	<string>浮生的小开关</string>
 </dict>
 </plist>
