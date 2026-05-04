@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>DayNightSwitch</string>
 	<key>CFBundleIdentifier</key>
-	<string>de.finngaida.daynightswitch</string>
+	<string>com.fusheng.daynightswitchfs</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundlePackageType</key>
