@@ -8,10 +8,11 @@
     BOOL _isAnimating;
 }
 
+@synthesize on = _on;
+
 #pragma mark - 生命周期
 
 - (instancetype)initWithFrame:(CGRect)frame {
-    // 默认尺寸：和 UISwitch 一致
     if (CGRectIsEmpty(frame)) {
         frame = CGRectMake(0, 0, 51, 31);
     }
@@ -26,18 +27,16 @@
 }
 
 - (void)_setupDefaults {
-    _isOn = NO;
+    _on = NO;
     _isAnimating = NO;
-    // 默认颜色：磨砂玻璃风格的淡蓝色
-    _dayBackgroundColor   = [UIColor colorWithRed:0.78 green:0.87 blue:0.95 alpha:1.0];  // 浅蓝
-    _nightBackgroundColor = [UIColor colorWithRed:0.20 green:0.25 blue:0.35 alpha:1.0];  // 深蓝灰
+    _dayBackgroundColor   = [UIColor colorWithRed:0.78 green:0.87 blue:0.95 alpha:1.0];
+    _nightBackgroundColor = [UIColor colorWithRed:0.20 green:0.25 blue:0.35 alpha:1.0];
 }
 
 - (void)_setupViews {
     self.backgroundColor = [UIColor clearColor];
     self.clipsToBounds = NO;
     
-    // 1. 代码画的背景胶囊（颜色可定制）
     _backgroundView = [[UIView alloc] initWithFrame:self.bounds];
     _backgroundView.backgroundColor = _dayBackgroundColor;
     _backgroundView.layer.cornerRadius = self.bounds.size.height / 2.0;
@@ -45,7 +44,6 @@
     _backgroundView.userInteractionEnabled = NO;
     [self addSubview:_backgroundView];
     
-    // 2. PNG 帧动画视图（铺满整个 switch）
     _animView = [[UIImageView alloc] initWithFrame:self.bounds];
     _animView.contentMode = UIViewContentModeScaleAspectFill;
     _animView.clipsToBounds = YES;
@@ -53,7 +51,6 @@
     _animView.layer.cornerRadius = self.bounds.size.height / 2.0;
     [self addSubview:_animView];
     
-    // 3. 点击手势
     [self addTarget:self action:@selector(_onTap) forControlEvents:UIControlEventTouchUpInside];
 }
 
@@ -64,7 +61,6 @@
     NSMutableArray *d2n = [NSMutableArray arrayWithCapacity:24];
     NSMutableArray *n2d = [NSMutableArray arrayWithCapacity:24];
     
-    // 前 24 帧：白天 → 夜晚
     for (int i = 0; i < 24; i++) {
         NSString *name = [NSString stringWithFormat:@"replay%d", i];
         UIImage *img = [UIImage imageNamed:name 
@@ -73,7 +69,6 @@
         if (img) [d2n addObject:img];
     }
     
-    // 后 24 帧：夜晚 → 白天
     for (int i = 24; i < 48; i++) {
         NSString *name = [NSString stringWithFormat:@"replay%d", i];
         UIImage *img = [UIImage imageNamed:name 
@@ -85,7 +80,7 @@
     _dayToNightFrames = [d2n copy];
     _nightToDayFrames = [n2d copy];
     
-    NSLog(@"[FushengDayNightSwitch] 加载了 %lu + %lu 帧", 
+    NSLog(@"[FushengDayNightSwitch] loaded %lu + %lu frames", 
           (unsigned long)_dayToNightFrames.count, 
           (unsigned long)_nightToDayFrames.count);
 }
@@ -94,7 +89,7 @@
 
 - (void)_onTap {
     if (_isAnimating) return;
-    [self setOn:!_isOn animated:YES];
+    [self setOn:!_on animated:YES];
     [self sendActionsForControlEvents:UIControlEventValueChanged];
 }
 
@@ -103,14 +98,14 @@
 }
 
 - (void)setOn:(BOOL)on animated:(BOOL)animated {
-    if (_isOn == on && !animated) {
-        _isOn = on;
+    if (_on == on && !animated) {
+        _on = on;
         [self _refreshDisplay];
         return;
     }
     
-    BOOL wasOn = _isOn;
-    _isOn = on;
+    BOOL wasOn = _on;
+    _on = on;
     
     if (!animated || wasOn == on) {
         [self _refreshDisplay];
@@ -121,13 +116,10 @@
 }
 
 - (void)_refreshDisplay {
-    // 静止状态：显示对应方向的最后一帧
-    if (_isOn) {
-        // ON = 夜晚状态，显示 d2n 最后一帧
+    if (_on) {
         _animView.image = [_dayToNightFrames lastObject];
         _backgroundView.backgroundColor = _nightBackgroundColor;
     } else {
-        // OFF = 白天状态，显示 n2d 最后一帧（也就是回到白天）
         _animView.image = [_nightToDayFrames lastObject];
         _backgroundView.backgroundColor = _dayBackgroundColor;
     }
@@ -143,21 +135,18 @@
         return;
     }
     
-    NSTimeInterval duration = 0.6;  // 总时长 0.6 秒
+    NSTimeInterval duration = 0.6;
     
-    // 1. 帧动画
     _animView.animationImages = frames;
     _animView.animationDuration = duration;
     _animView.animationRepeatCount = 1;
     [_animView startAnimating];
     
-    // 2. 同步背景颜色渐变
     UIColor *targetColor = toOn ? _nightBackgroundColor : _dayBackgroundColor;
     [UIView animateWithDuration:duration animations:^{
         self->_backgroundView.backgroundColor = targetColor;
     }];
     
-    // 3. 动画结束后停在最后一帧
     __weak typeof(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
@@ -174,12 +163,12 @@
 
 - (void)setDayBackgroundColor:(UIColor *)color {
     _dayBackgroundColor = color ?: [UIColor colorWithRed:0.78 green:0.87 blue:0.95 alpha:1.0];
-    if (!_isOn) _backgroundView.backgroundColor = _dayBackgroundColor;
+    if (!_on) _backgroundView.backgroundColor = _dayBackgroundColor;
 }
 
 - (void)setNightBackgroundColor:(UIColor *)color {
     _nightBackgroundColor = color ?: [UIColor colorWithRed:0.20 green:0.25 blue:0.35 alpha:1.0];
-    if (_isOn) _backgroundView.backgroundColor = _nightBackgroundColor;
+    if (_on) _backgroundView.backgroundColor = _nightBackgroundColor;
 }
 
 #pragma mark - 布局
