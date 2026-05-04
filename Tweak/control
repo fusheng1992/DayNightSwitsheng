@@ -3,7 +3,7 @@ Name: 浮生的小开关
 Depends: firmware (>= 14.0), mobilesubstrate
 Version: 1.0.0
 Architecture: iphoneos-arm64
-Description: 开关动画主题
+Description: 开关酷炫动画
 Maintainer: fusheng
 Author: fusheng
 Section: Tweaks
